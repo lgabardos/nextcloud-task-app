@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Nextcloud Tasks",
+    "slug": "nextcloud-tasks",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0F1E"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "eu.gabardos.nexcloud.tasks"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0F1E"
+      },
+      "package": "eu.gabardos.nexcloud.tasks",
+      "permissions": ["INTERNET"]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "scheme": "nextcloud-tasks",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "50d59f51-ad84-401c-80ba-58e4917f9951"
+      }
+    }
+  }
+}
