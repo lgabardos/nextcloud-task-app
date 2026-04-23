@@ -7,8 +7,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build:android": "npx eas-cli@latest build --platform android",
-    "build:apk": "npx eas-cli@latest build --platform android --profile preview",
-    "build:apk:prod": "npx eas-cli@latest build --platform android --profile production"
+    "build:android:preview": "npx eas-cli@latest build --platform android --profile preview",
+    "build:android:prod": "npx eas-cli@latest build --platform android --profile production",
+    "build:ios": "npx eas-cli@latest build --platform ios",
+    "build:ios:preview": "npx eas-cli@latest build --platform ios --profile preview",
+    "build:ios:prod": "npx eas-cli@latest build --platform ios --profile production"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

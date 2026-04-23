@@ -27,6 +27,9 @@ import {
   formatDueDate,
   Task,
 } from '../services/calDavService';
+import { saveTasksToCache, loadTasksFromCache } from '../services/cacheService';
+import { enqueuePendingAction } from '../services/pendingActionsService';
+import { useSyncPending } from '../hooks/useSyncPending';
 import { useAppStore } from '../store/appStore';
 import { Button, Input } from '../components/UI';
 import { Colors, Spacing, Radius } from '../utils/theme';
@@ -54,6 +57,7 @@ export default function TaskListScreen() {
   const setTasksForList = useAppStore((s) => s.setTasksForList);
   const updateTask = useAppStore((s) => s.updateTask);
   const removeTask = useAppStore((s) => s.removeTask);
+  const isOffline = useAppStore((s) => s.isOffline);
 
   const allTasks = tasksByList[listId] || [];
 
@@ -81,8 +85,16 @@ export default function TaskListScreen() {
         return 0;
       });
       setTasksForList(listId, tasks);
+      await saveTasksToCache(listId, tasks);
     } catch (e: any) {
-      setError(e.message || 'Erreur de chargement');
+      // Network failed — try cache
+      const cached = await loadTasksFromCache(listId);
+      if (cached && cached.length > 0) {
+        setTasksForList(listId, cached);
+        setError('📶 Hors-ligne — données depuis le cache');
+      } else {
+        setError(e.message || 'Erreur de chargement');
+      }
     }
   }, [credentials, listUrl, listId]);
 
@@ -92,23 +104,52 @@ export default function TaskListScreen() {
     }
   }, [loadTasks]);
 
+  const { syncPending } = useSyncPending();
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await loadTasks();
+    // Si la connexion est revenue, rejouer les actions en attente
+    const synced = await syncPending();
+    if (synced > 0) {
+      // Reload pour avoir l'état serveur à jour
+      await loadTasks();
+    }
     setRefreshing(false);
   };
 
   const handleToggle = async (task: Task) => {
     if (!credentials) return;
     const newCompleted = task.status !== 'COMPLETED';
-    // Optimistic update
-    updateTask(listId, { ...task, status: newCompleted ? 'COMPLETED' : 'NEEDS-ACTION' });
+
+    // Optimistic update (toujours, online ou offline)
+    const optimisticTask = {
+      ...task,
+      status: (newCompleted ? 'COMPLETED' : 'NEEDS-ACTION') as Task['status'],
+      percentComplete: newCompleted ? 100 : 0,
+    };
+    updateTask(listId, optimisticTask);
+
+    if (isOffline) {
+      // Mode hors-ligne : on enqueue l'action pour sync ultérieure
+      await enqueuePendingAction({ type: 'TOGGLE_COMPLETE', taskUrl: task.url, listId, completed: newCompleted });
+      // Mettre à jour le cache local avec le nouvel état
+      const updatedTasks = (tasksByList[listId] || []).map((t) =>
+        t.url === task.url ? optimisticTask : t
+      );
+      await saveTasksToCache(listId, updatedTasks);
+      return;
+    }
+
     try {
       await updateTaskStatus(credentials, task, newCompleted);
     } catch (e: any) {
-      // Revert
-      updateTask(listId, task);
-      Alert.alert('Erreur', e.message);
+      // Réseau perdu en cours de route — on enqueue et on garde l'état optimiste
+      await enqueuePendingAction({ type: 'TOGGLE_COMPLETE', taskUrl: task.url, listId, completed: newCompleted });
+      const updatedTasks = (tasksByList[listId] || []).map((t) =>
+        t.url === task.url ? optimisticTask : t
+      );
+      await saveTasksToCache(listId, updatedTasks);
     }
   };
 
