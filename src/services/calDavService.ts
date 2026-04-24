@@ -389,3 +389,77 @@ export function formatDueDate(dateStr?: string): string | undefined {
   const day = clean.substring(6, 8);
   return `${day}/${month}/${year}`;
 }
+
+/**
+ * Create a new task list (calendar) via CalDAV MKCALENDAR
+ */
+export async function createTaskList(
+  creds: NextcloudCredentials,
+  name: string,
+  color?: string
+): Promise<TaskList> {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    || `list-${Date.now()}`;
+
+  const calUrl = `${creds.serverUrl}/remote.php/dav/calendars/${creds.loginName}/${slug}/`;
+
+  const body = `<?xml version="1.0" encoding="UTF-8"?>
+<c:mkcalendar xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:nc="http://nextcloud.com/ns" xmlns:oc="http://owncloud.org/ns">
+  <d:set>
+    <d:prop>
+      <d:displayname>${name}</d:displayname>
+      <c:supported-calendar-component-set>
+        <c:comp name="VTODO"/>
+      </c:supported-calendar-component-set>
+      ${color ? `<nc:calendar-color>${color}FF</nc:calendar-color>` : ''}
+    </d:prop>
+  </d:set>
+</c:mkcalendar>`;
+
+  const response = await fetch(calUrl, {
+    method: 'MKCALENDAR',
+    headers: {
+      Authorization: 'Basic ' + btoa(`${creds.loginName}:${creds.appPassword}`),
+      'Content-Type': 'application/xml; charset=utf-8',
+    },
+    body,
+  });
+
+  // 201 Created or 405 already exists
+  if (response.status !== 201 && response.status !== 200) {
+    if (response.status === 405) {
+      throw new Error(`Une liste nommée "${name}" existe déjà.`);
+    }
+    throw new Error(`Erreur création liste: ${response.status}`);
+  }
+
+  return {
+    id: slug,
+    url: calUrl,
+    displayName: name,
+    color: color ?? undefined,
+  };
+}
+
+/**
+ * Delete a task list (calendar)
+ */
+export async function deleteTaskList(
+  creds: NextcloudCredentials,
+  listUrl: string
+): Promise<void> {
+  const response = await fetch(listUrl, {
+    method: 'DELETE',
+    headers: {
+      Authorization: 'Basic ' + btoa(`${creds.loginName}:${creds.appPassword}`),
+    },
+  });
+
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Erreur suppression liste: ${response.status}`);
+  }
+}

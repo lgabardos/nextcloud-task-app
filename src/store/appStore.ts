@@ -18,6 +18,12 @@ interface AppState {
   removeTask: (listId: string, taskUrl: string) => void;
   addTask: (listId: string, task: Task) => void;
 
+  // Network / cache state
+  isOffline: boolean;
+  setOffline: (v: boolean) => void;
+  lastSync: number | null;
+  setLastSync: (ts: number | null) => void;
+
   // UI
   isLoading: boolean;
   setLoading: (v: boolean) => void;
@@ -58,6 +64,11 @@ export const useAppStore = create<AppState>((set) => ({
         [listId]: [task, ...(state.tasksByList[listId] || [])],
       },
     })),
+
+  isOffline: false,
+  setOffline: (v) => set({ isOffline: v }),
+  lastSync: null,
+  setLastSync: (ts) => set({ lastSync: ts }),
 
   isLoading: false,
   setLoading: (v) => set({ isLoading: v }),
