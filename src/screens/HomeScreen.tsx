@@ -31,6 +31,7 @@ import { checkForUpdate, UpdateInfo } from '../services/updateService';
 import { useSyncPending } from '../hooks/useSyncPending';
 import { useAppStore } from '../store/appStore';
 import { Colors, Spacing, Radius } from '../utils/theme';
+import { ChevronRight, LogOut } from 'lucide-react-native';
 
 const LIST_COLORS = [
   '#00C6BE', '#6366F1', '#EC4899', '#F59E0B',
@@ -242,7 +243,7 @@ export default function HomeScreen() {
             {item.url.split('/dav/calendars/')[1] || item.url}
           </Text>
         </View>
-        <Text style={styles.chevron}>›</Text>
+        <Text style={styles.chevron}><ChevronRight color={styles.chevron.color} size={styles.chevron.fontSize} /></Text>
       </TouchableOpacity>
     );
   };
@@ -265,7 +266,7 @@ export default function HomeScreen() {
             </Text>
             <Text style={styles.updateSub}>Appuyez pour télécharger</Text>
           </View>
-          <Text style={styles.updateChevron}>›</Text>
+          <Text style={styles.updateChevron}><ChevronRight color={styles.chevron.color} size={styles.chevron.fontSize} /></Text>
         </TouchableOpacity>
       )}
 
@@ -278,7 +279,7 @@ export default function HomeScreen() {
           </Text>
         </View>
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={styles.logoutText}>⏏</Text>
+          <Text style={styles.logoutText}><LogOut color={styles.logoutText.color} size={styles.logoutText.fontSize} /></Text>
         </TouchableOpacity>
       </View>
 
