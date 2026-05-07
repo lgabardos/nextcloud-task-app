@@ -1,0 +1,159 @@
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Nextcloud Tasks — GitLab CI/CD
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Pipelines :
+#   • merge_request  → install + tests avec seuil de couverture > 70 %
+#   • push sur main  → crée un tag Git basé sur la version dans package.json
+#
+# Prérequis (à configurer dans GitLab > Settings > CI/CD > Variables) :
+#   CI_PUSH_TOKEN  → Project Access Token avec le scope "write_repository"
+#                    (Settings > Access Tokens > Role: Developer, write_repository)
+#                    Utilisé pour créer le tag depuis le pipeline.
+# ─────────────────────────────────────────────────────────────────────────────
+
+default:
+  image: node:24-slim
+
+stages:
+  - test
+  - release
+
+# ─── Template commun ─────────────────────────────────────────────────────────
+
+.install: &install
+  before_script:
+    - npm ci --prefer-offline
+
+# ─── STAGE : test ─────────────────────────────────────────────────────────────
+
+tests:
+  stage: test
+  <<: *install
+  script:
+    - npm run test:coverage -- --ci --coverageReporters=text --coverageReporters=cobertura
+  coverage: '/All files[^|]*\|[^|]*\s+([\d.]+)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths:
+      - coverage/
+    expire_in: 7 days
+  rules:
+    # Tourne sur chaque Merge Request
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Tourne aussi sur main (pour voir la couverture dans l'interface)
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Job qui échoue explicitement si la couverture est < 70 %
+coverage-check:
+  stage: test
+  needs: [tests]
+  image: node:24-slim
+  script:
+    - |
+      COVERAGE=$(cat coverage/coverage-summary.json \
+        | node -e "
+          const data = require('/dev/stdin');
+          process.stdout.write(String(data.total.lines.pct));
+        ")
+      echo "Couverture de lignes : ${COVERAGE}%"
+      node -e "
+        const pct = parseFloat('${COVERAGE}');
+        if (isNaN(pct) || pct < 70) {
+          console.error('❌ Couverture insuffisante : ' + pct + '% (minimum requis : 70%)');
+          process.exit(1);
+        }
+        console.log('✅ Couverture OK : ' + pct + '%');
+      "
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ─── STAGE : release ──────────────────────────────────────────────────────────
+
+create-tag:
+  stage: release
+  image: node:24-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git curl
+    # Configurer git avec l'identité du bot CI
+    - git config --global user.email "ci-bot@gitlab.ci"
+    - git config --global user.name "GitLab CI"
+    # Authentification : utilise CI_PUSH_TOKEN (Project Access Token)
+    # ou CI_JOB_TOKEN si le projet autorise les writes depuis le CI
+    - |
+      if [ -n "$CI_PUSH_TOKEN" ]; then
+        REMOTE_URL="https://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      else
+        # Fallback : CI_JOB_TOKEN (fonctionne si "Allow CI job token to create tags" est activé)
+        REMOTE_URL="https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      fi
+      git remote set-url origin "$REMOTE_URL"
+  script:
+    - |
+      # Lire la version depuis package.json
+      VERSION=$(node -e "process.stdout.write(require('./package.json').version)")
+      TAG="v${VERSION}"
+      echo "Version détectée : ${TAG}"
+
+      # Vérifier si le tag existe déjà (évite les doublons sur re-run)
+      if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
+        echo "⚠️  Le tag ${TAG} existe déjà, rien à faire."
+        exit 0
+      fi
+
+      # Créer et pousser le tag annoté
+      git tag -a "$TAG" -m "Release ${TAG} — auto-tagging depuis CI [skip ci]"
+      git push origin "$TAG"
+      echo "✅ Tag ${TAG} créé et poussé avec succès."
+  rules:
+    # Tourne uniquement sur un push/merge sur la branche principale
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+
+create-github-release:
+  stage: release
+  image: node:24-slim
+  needs: [create-tag]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq curl
+  script:
+    - |
+      VERSION=$(node -e "process.stdout.write(require('./package.json').version)")
+      TAG="v${VERSION}"
+      echo "Création de la release GitHub pour ${TAG}..."
+
+      # Extraire les notes de version depuis package.json (optionnel)
+      # ou utiliser un message générique
+      BODY="Release automatique ${TAG} — générée depuis GitLab CI."
+
+      HTTP_STATUS=$(curl -s -o /tmp/gh_response.json -w "%{http_code}" \
+        -X POST \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        -H "Content-Type: application/json" \
+        "https://api.github.com/repos/${GITHUB_REPO}/releases" \
+        -d "{
+          \"tag_name\": \"${TAG}\",
+          \"name\": \"${TAG}\",
+          \"body\": \"${BODY}\",
+          \"draft\": false,
+          \"prerelease\": false
+        }")
+
+      cat /tmp/gh_response.json
+
+      if [ "$HTTP_STATUS" = "201" ]; then
+        echo "✅ Release GitHub ${TAG} créée avec succès."
+      elif [ "$HTTP_STATUS" = "422" ]; then
+        echo "⚠️  La release ${TAG} existe déjà sur GitHub, rien à faire."
+        exit 0
+      else
+        echo "❌ Erreur lors de la création de la release GitHub (HTTP ${HTTP_STATUS})"
+        exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
