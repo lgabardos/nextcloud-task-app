@@ -1,170 +1,206 @@
-# 📱 Nextcloud Tasks
+# Nextcloud Tasks
 
-Application Android React Native (Expo) pour gérer vos tâches CalDAV Nextcloud.
+Application mobile React Native (Expo) pour gérer vos tâches CalDAV Nextcloud. Fonctionne sur Android et iOS.
+
+> **Releases & téléchargements** → [github.com/lgabardos/nextcloud-task-app/releases](https://github.com/lgabardos/nextcloud-task-app/releases)
 
 ---
 
-## 🚀 Installation rapide
+## Fonctionnalités
 
-### Prérequis
+- **Connexion sécurisée** — basic auth via CalDAV + génération d'un app-password OCS dédié, stocké dans le keychain chiffré de l'appareil
+- **Listes de tâches CalDAV** — lecture, création et suppression de listes (MKCALENDAR / DELETE)
+- **Gestion des tâches** — créer, marquer terminée/à faire, supprimer, voir le détail (priorité, échéance, catégories, progression)
+- **Mode hors-ligne** — les listes et tâches sont mises en cache localement (AsyncStorage) ; les toggles effectués sans réseau sont mis en queue et synchronisés automatiquement au retour de la connexion
+- **Mises à jour automatiques** — vérification au lancement des nouvelles versions publiées sur GitHub Releases
+- **Optimistic updates** — l'UI répond instantanément, les appels réseau se font en arrière-plan
 
-- [Node.js](https://nodejs.org/) >= 18
-- [Expo CLI](https://docs.expo.dev/get-started/installation/)
-- Un compte [Expo](https://expo.dev/) (gratuit, pour le build APK)
-- [EAS CLI](https://docs.expo.dev/eas/) : `npm install -g eas-cli`
+---
 
-### 1. Installer les dépendances
+## Prérequis
+
+| Outil | Version minimale |
+|---|---|
+| Node.js | 18 |
+| npm | 9 |
+| Expo CLI | dernière version |
+| EAS CLI | dernière version (pour les builds) |
+
+---
+
+## Installation
 
 ```bash
+# 1. Cloner le dépôt
+git clone https://github.com/lgabardos/nextcloud-task-app.git
+cd nextcloud-task-app
+
+# 2. Installer les dépendances
 npm install
-```
 
-### 2. Lancer en développement
-
-```bash
+# 3. Lancer en développement
 npx expo start
 ```
 
-Scannez le QR code avec l'app **Expo Go** (Android/iOS) pour tester.
+Scannez le QR code avec **Expo Go** (Android/iOS) pour tester instantanément.
+
+> **Note CORS** : certaines requêtes CalDAV (PROPFIND, REPORT) peuvent être bloquées par le navigateur dans Expo Go. Pour un test complet, utilisez un **Development Build** (voir ci-dessous) ou directement un APK.
 
 ---
 
-## 📦 Build APK Android
-
-### Étape 1 — Se connecter à Expo
+## Tests
 
 ```bash
-eas login
+# Lancer tous les tests
+npm test
+
+# Mode watch
+npm run test:watch
+
+# Avec couverture
+npm run test:coverage
 ```
 
-### Étape 2 — Configurer le projet
+Les tests couvrent les services purs (aucune dépendance réseau ou native) :
 
-```bash
-eas build:configure
-```
-
-### Étape 3 — Build APK (distributable)
-
-```bash
-eas build --platform android --profile preview
-```
-
-> Cela génère un fichier `.apk` installable directement sur Android (pas besoin du Play Store).
-
-### Étape 4 — Build AAB (Play Store)
-
-```bash
-eas build --platform android --profile production
-```
+| Fichier | Ce qui est testé |
+|---|---|
+| `calDavService` | parsing iCal, formatage dates, priorités, slugification |
+| `pendingActionsService` | enqueue, dédoublonnage, annulation, removePending |
+| `cacheService` | formatLastSync |
+| `updateService` | comparaison de versions sémantiques |
+| `authService` | nettoyage d'URL |
 
 ---
 
-## 🔧 Configuration
+## Build Android
 
-### Changer le nom/package de l'app
+### APK direct (distribution interne)
 
-Dans `app.json` :
+```bash
+# Se connecter à Expo
+npx eas-cli@latest login
 
-```json
-{
-  "expo": {
-    "name": "Mon App Tâches",
-    "android": {
-      "package": "com.mondomaine.tasks"
-    }
-  }
-}
+# Build APK installable sans Play Store
+npm run build:android:preview
 ```
 
-### Icône et splash screen
+### AAB pour le Play Store
 
-Remplacez `assets/icon.png` (1024×1024) et configurez `splash` dans `app.json`.
+```bash
+npm run build:android:prod
+```
+
+### Tous les profils disponibles
+
+| Commande | Résultat |
+|---|---|
+| `npm run build:android:preview` | `.apk` installable directement |
+| `npm run build:android:prod` | `.aab` pour le Play Store |
+| `npm run build:ios:preview` | `.ipa` distribution interne iOS |
+| `npm run build:ios:prod` | `.ipa` App Store |
 
 ---
 
-## 🗂 Structure du projet
+## Structure du projet
 
 ```
-app/                        ← Routes Expo Router
-  _layout.tsx               ← Root layout + vérification auth
-  index.tsx                 ← Écran de connexion
+app/                          ← Routes Expo Router
+  _layout.tsx                 ← Root layout + vérification auth au démarrage
+  index.tsx                   ← Écran de connexion
   (app)/
-    _layout.tsx             ← Group layout (écrans authentifiés)
-    home.tsx                ← Liste des task lists
-    list/[id].tsx           ← Tâches d'une liste
-    task/[taskUrl].tsx      ← Détail d'une tâche
+    _layout.tsx               ← Layout groupe authentifié
+    home.tsx                  ← Liste des task lists
+    list/[id].tsx             ← Tâches d'une liste
+    task/[taskUrl].tsx        ← Détail d'une tâche
 
 src/
-  services/
-    authService.ts          ← Nextcloud Login v2 + SecureStore
-    calDavService.ts        ← PROPFIND / REPORT / PUT / DELETE CalDAV
   screens/
-    LoginScreen.tsx         ← Formulaire de connexion
-    HomeScreen.tsx          ← Vue des listes
-    TaskListScreen.tsx      ← Vue des tâches (filtres, ajout, toggle)
-    TaskDetailScreen.tsx    ← Détail complet + édition statut
+    LoginScreen.tsx           ← Formulaire de connexion Nextcloud
+    HomeScreen.tsx            ← Accueil : listes + état offline + MAJ dispo
+    TaskListScreen.tsx        ← Liste des tâches, filtres, ajout, toggle
+    TaskDetailScreen.tsx      ← Détail complet + actions
+
+  services/
+    authService.ts            ← Connexion CalDAV, génération app-password, SecureStore
+    calDavService.ts          ← PROPFIND / REPORT / PUT / DELETE / MKCALENDAR
+    cacheService.ts           ← Lecture/écriture cache AsyncStorage
+    pendingActionsService.ts  ← Queue d'actions offline (toggle hors-ligne)
+    updateService.ts          ← Vérification GitHub Releases
+
+  hooks/
+    useSyncPending.ts         ← Flush la queue offline au retour réseau
+
   store/
-    appStore.ts             ← État global Zustand
+    appStore.ts               ← État global Zustand (credentials, listes, tâches, offline)
+
   components/
-    UI.tsx                  ← Button, Input, Card, Badge
+    UI.tsx                    ← Composants réutilisables (Button, Input, Card, Badge)
+
   utils/
-    theme.ts                ← Couleurs, espacements, rayons
+    theme.ts                  ← Tokens de design (couleurs, spacing, radius)
+
+  __tests__/                  ← Tests unitaires Jest
 ```
 
 ---
 
-## 🔐 Authentification Nextcloud
+## Authentification
 
-L'application utilise le **Nextcloud Login Flow v2** :
+L'app n'utilise **pas** le Login Flow v2 (qui nécessite un navigateur et génère des erreurs CORS dans un contexte natif). Le flux est :
 
-1. `POST /index.php/login/v2` → initiation, récupère token + endpoint de poll
-2. Tentative d'auth avec user/pass via l'URL de login
-3. Poll de `/login/v2/poll` pour obtenir un **app-password** (token d'accès dédié)
-4. Fallback : vérification directe via PROPFIND CalDAV avec basic auth
-5. Credentials stockés dans le **Keychain Android chiffré** (via `expo-secure-store`)
+1. Vérification des credentials via `PROPFIND /remote.php/dav/` avec basic auth
+2. Tentative de génération d'un **app-password** dédié via `GET /ocs/v2.php/core/apppassword`
+3. Si l'OCS échoue (permissions ou version Nextcloud trop ancienne) → fallback sur le mot de passe directement
+4. Credentials stockés dans le **keychain chiffré de l'appareil** via `expo-secure-store`
 
----
-
-## ✅ Fonctionnalités
-
-- [x] Connexion Nextcloud (Login v2 + fallback basic auth)
-- [x] Stockage sécurisé des credentials (SecureStore)
-- [x] Reconnexion automatique au lancement
-- [x] Liste des task lists CalDAV (VTODO uniquement)
-- [x] Affichage des tâches avec filtres (en cours / terminées / toutes)
-- [x] Toggle complet/incomplet (mise à jour iCal via PUT)
-- [x] Création de tâche (titre, description, priorité)
-- [x] Suppression de tâche (DELETE CalDAV)
-- [x] Détail d'une tâche (statut, priorité, échéance, catégories, timestamps)
-- [x] Pull-to-refresh
-- [x] Déconnexion sécurisée
-- [x] Optimistic updates (UI réactive sans attendre le serveur)
+L'app-password est révocable depuis **Paramètres Nextcloud → Sécurité → Appareils et sessions**.
 
 ---
 
-## 📡 API CalDAV utilisée
+## Mode hors-ligne
 
-| Opération | Méthode HTTP | Description |
+Quand le réseau est indisponible :
+
+- Les listes et tâches sont affichées depuis le cache local
+- Un indicateur `📶 Hors-ligne` s'affiche avec la date de dernière synchronisation
+- Les toggles (marquer terminée/à faire) fonctionnent normalement — ils sont enregistrés dans une queue persistante
+- Si on retoggle une tâche déjà en queue, les deux actions s'annulent (net zéro)
+- Au retour de la connexion (pull-to-refresh), la queue est flushée automatiquement et l'état est synchronisé avec le serveur
+
+---
+
+## API CalDAV utilisée
+
+| Opération | Méthode | Endpoint |
 |---|---|---|
-| Lister les calendriers | `PROPFIND` Depth:1 | Récupère toutes les listes |
-| Lister les tâches | `REPORT` | Filtre VTODO |
-| Créer une tâche | `PUT` | Crée un fichier .ics |
-| Modifier une tâche | `GET` + `PUT` | Lit, modifie, réécrit l'iCal |
-| Supprimer une tâche | `DELETE` | Supprime le fichier .ics |
+| Lister les calendriers | `PROPFIND` Depth:1 | `/remote.php/dav/calendars/{user}/` |
+| Lister les tâches | `REPORT` | `/{calendar}/` |
+| Créer une tâche | `PUT` | `/{calendar}/{uid}.ics` |
+| Mettre à jour une tâche | `GET` + `PUT` | `/{calendar}/{uid}.ics` |
+| Supprimer une tâche | `DELETE` | `/{calendar}/{uid}.ics` |
+| Créer une liste | `MKCALENDAR` | `/remote.php/dav/calendars/{user}/{slug}/` |
+| Supprimer une liste | `DELETE` | `/remote.php/dav/calendars/{user}/{slug}/` |
 
 ---
 
-## 🐛 Dépannage
+## Dépannage
 
-### "Impossible de contacter le serveur"
-- Vérifiez l'URL (doit commencer par `https://`)
-- Vérifiez que CalDAV est activé dans Nextcloud (Admin > Paramètres > Partage)
-- Testez avec curl : `curl -u user:pass https://votre-serveur/remote.php/dav/`
+**"Impossible de joindre le serveur"**
+- L'URL doit commencer par `https://` (ou `http://` pour un serveur local)
+- Testez l'accès : `curl -u login:pass https://votre-serveur/remote.php/dav/`
 
-### "Aucune liste trouvée"
-- Créez au moins une liste dans l'app **Tasks** de Nextcloud
-- Vérifiez que les permissions CalDAV sont actives
+**"CalDAV introuvable" (404)**
+- Vérifiez que l'app **Tasks** est activée dans Nextcloud
+- Allez dans Administration → Applications et activez "Tasks"
 
-### Build échoue
-- Vérifiez que le `package` Android dans `app.json` est unique
-- Lancez `eas diagnostics` pour identifier le problème
+**"Identifiants incorrects" (401)**
+- Si la double authentification est activée, générez un mot de passe d'application depuis Paramètres → Sécurité
+
+**"Aucune liste trouvée"**
+- Créez au moins une liste depuis l'interface web Nextcloud (app Tasks)
+
+**Build EAS échoue**
+- Vérifiez que `android.package` dans `app.json` est unique
+- Lancez `npx eas-cli@latest diagnostics`
+- Consultez les logs complets sur [expo.dev](https://expo.dev)
