@@ -1,0 +1,39 @@
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --ci --coverageReporters=text --coverageReporters=json-summary
+
+      - name: Check coverage threshold (> 70%)
+        run: |
+          COVERAGE=$(node -e "
+            const data = require('./coverage/coverage-summary.json');
+            process.stdout.write(String(data.total.lines.pct));
+          ")
+          echo "Couverture de lignes : ${COVERAGE}%"
+          node -e "
+            const pct = parseFloat('${COVERAGE}');
+            if (isNaN(pct) || pct < 70) {
+              console.error('❌ Couverture insuffisante : ' + pct + '% (minimum requis : 70%)');
+              process.exit(1);
+            }
+            console.log('✅ Couverture OK : ' + pct + '%');
+          "
