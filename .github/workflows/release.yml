@@ -25,7 +25,7 @@ jobs:
         run: |
           VERSION=$(node -e "process.stdout.write(require('./package.json').version)")
           echo "tag=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Version détectée : v${VERSION}"
+          echo "Version détectée : ${VERSION}"
 
       - name: Check if tag already exists
         id: tag_check
