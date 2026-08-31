@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -51,6 +51,11 @@ export default function TaskListScreen() {
   const [newDescription, setNewDescription] = useState('');
   const [newPriority, setNewPriority] = useState<number>(0);
   const [adding, setAdding] = useState(false);
+
+  // Saisie rapide inline
+  const [quickSummary, setQuickSummary] = useState('');
+  const [quickAdding, setQuickAdding] = useState(false);
+  const quickInputRef = useRef<TextInput>(null);
 
   const credentials = useAppStore((s) => s.credentials);
   const tasksByList = useAppStore((s) => s.tasksByList);
@@ -198,6 +203,25 @@ export default function TaskListScreen() {
     }
   };
 
+  // Ajout rapide inline — soumet au appui sur Entrée, remet le focus pour enchaîner
+  const handleQuickAdd = async () => {
+    const summary = quickSummary.trim();
+    if (!summary || !credentials || quickAdding) return;
+    setQuickAdding(true);
+    setQuickSummary('');
+    try {
+      await createTask(credentials, listUrl, { summary });
+      await loadTasks();
+      // Remettre le focus pour permettre d'enchaîner les ajouts
+      quickInputRef.current?.focus();
+    } catch (e: any) {
+      setQuickSummary(summary); // restaurer le texte en cas d'erreur
+      Alert.alert('Erreur', e.message);
+    } finally {
+      setQuickAdding(false);
+    }
+  };
+
   const renderTask = ({ item }: { item: Task }) => {
     const isCompleted = item.status === 'COMPLETED';
     const priority = getPriorityInfo(item.priority);
@@ -333,6 +357,7 @@ export default function TaskListScreen() {
         renderItem={renderTask}
         contentContainerStyle={styles.flatList}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -353,13 +378,53 @@ export default function TaskListScreen() {
                   filter === 'pending' ? 'Toutes les tâches sont terminées !' :
                   'Aucune tâche'}
               </Text>
-              {filter !== 'completed' && (
-                <TouchableOpacity onPress={() => setShowAddModal(true)}>
-                  <Text style={[styles.emptyAction, { color: listColor }]}>+ Ajouter une tâche</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : null
+        }
+        ListFooterComponent={
+          <View style={styles.quickAddRow}>
+            {/* Checkbox fantôme pour l'alignement visuel */}
+            <View style={styles.quickAddCheckbox} />
+
+            <TextInput
+              ref={quickInputRef}
+              style={styles.quickAddInput}
+              value={quickSummary}
+              onChangeText={setQuickSummary}
+              placeholder="Ajouter une entrée…"
+              placeholderTextColor={Colors.textMuted}
+              selectionColor={listColor}
+              returnKeyType="done"
+              blurOnSubmit={false}
+              editable={!quickAdding}
+              onSubmitEditing={handleQuickAdd}
+            />
+
+            {/* Indicateur de chargement ou bouton options avancées */}
+            {quickAdding ? (
+              <View style={styles.quickAddSpinner}>
+                <Text style={[styles.quickAddSpinnerText, { color: listColor }]}>…</Text>
+              </View>
+            ) : quickSummary.trim().length > 0 ? (
+              // Bouton "⏎" visible quand du texte est saisi
+              <TouchableOpacity
+                style={[styles.quickAddSubmit, { backgroundColor: listColor }]}
+                onPress={handleQuickAdd}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.quickAddSubmitText}>↵</Text>
+              </TouchableOpacity>
+            ) : (
+              // Bouton "…" pour ouvrir le modal avancé
+              <TouchableOpacity
+                style={styles.quickAddAdvanced}
+                onPress={() => setShowAddModal(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.quickAddAdvancedText}>···</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         }
       />
 
@@ -569,7 +634,75 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 60, gap: Spacing.sm },
   emptyIcon: { fontSize: 48 },
   emptyText: { color: Colors.textSecondary, fontSize: 16, fontWeight: '600' },
-  emptyAction: { fontSize: 15, fontWeight: '700', marginTop: 4 },
+
+  // Champ d'ajout rapide inline
+  quickAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginBottom: 80,
+  },
+  quickAddCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    flexShrink: 0,
+  },
+  quickAddInput: {
+    flex: 1,
+    height: 40,
+    color: Colors.textPrimary,
+    fontSize: 15,
+    paddingVertical: 0,
+  },
+  quickAddSubmit: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  quickAddSubmitText: {
+    color: Colors.bg,
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: -1,
+  },
+  quickAddAdvanced: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  quickAddAdvancedText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: -4,
+  },
+  quickAddSpinner: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickAddSpinnerText: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
 
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },

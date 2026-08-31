@@ -160,6 +160,6 @@ describe('formatLastSync', () => {
     const ts = Date.now() - 2 * 24 * 3_600_000; // 2 jours
     const result = formatLastSync(ts);
     // Doit contenir au moins l'année
-    expect(result).toMatch(/^\d{2} \w+, \d{2}:\d{2}$/);
+    expect(result).toMatch(/^\d{2} [-'0-9a-zÀ-ÿ]+, \d{2}:\d{2}$/);
   });
 });
